@@ -167,13 +167,35 @@ inline void panelFacts(const uint8_t *b,size_t header,size_t size,Ports &ports,c
     }
     if(duplicate || !options || optionsSize<(handle==0x80?2U:1U) ||
        !edp || edpSize<212 || (ports.version>=232 && (!power || powerSize<56)))return;
-    unsigned internal=PortCount;
-    for(unsigned d=0;d<PortCount;++d)if((ports.present&(1U<<d)) &&
-        ports.port[d].internal() && ports.port[d].dp()) {
-        if(internal!=PortCount)return; // no guessed panel/connector association
-        internal=d;
+    unsigned internal = PortCount;
+    uint32_t internalMask = 0;
+
+    for (unsigned d = 0; d < PortCount; ++d) {
+        if ((ports.present & (1U << d)) &&
+            ports.port[d].internal() &&
+            ports.port[d].dp()) {
+
+            internalMask |= (1U << d);
+
+            if (internal == PortCount)
+                internal = d;
+        }
     }
-    if(internal==PortCount)return;
+
+    if (internal == PortCount)
+        return;
+
+    // Experimental Lenovo LOQ dual-eDP workaround.
+    // Prefer DDI A / LFP1 when both A and B are present.
+    if (internalMask == 0x03) {
+        if (handle != 0x0008 && handle != 0x0080)
+            return;
+
+        internal = 0;
+        handle = 0x0008;
+    } else if (internalMask & (internalMask - 1U)) {
+        return;
+    }
     const auto requested=options[handle==0x80?1:0];
     if(requested>=16 && requested!=0xff)return;
     // No blind profile-zero fallback. Missing identity is usable only if all
